@@ -1,0 +1,141 @@
+import hashlib
+import json
+from time import time
+
+class SimpleBankingBlockchain:
+    def __init__(self, difficulty="0000"):
+        self.chain = []
+        self.pending_txns = []
+        self.balances = {}
+        self.difficulty = difficulty
+        self.create_block(proof=1, previous_hash="0")  # Genesis block
+
+    # -------- Blockchain Basics --------
+    def create_block(self, proof, previous_hash):
+        block = {
+            "index": len(self.chain) + 1,
+            "timestamp": time(),
+            "transactions": self.pending_txns,
+            "proof": proof,
+            "previous_hash": previous_hash
+        }
+
+        # Apply transactions to balances
+        for tx in self.pending_txns:
+            sender, receiver, amount = tx["from"], tx["to"], tx["amount"]
+            if sender != "BANK":
+                self.balances[sender] -= amount
+            self.balances[receiver] = self.balances.get(receiver, 0) + amount
+
+        self.pending_txns = []
+        self.chain.append(block)
+        return block
+
+    def get_last_block(self):
+        return self.chain[-1]
+
+    def proof_of_work(self, prev_proof):
+        n = 1
+        while True:
+            digest = hashlib.sha256(str(n*n - prev_proof*prev_proof).encode()).hexdigest()
+            if digest.startswith(self.difficulty):
+                return n
+            n += 1
+
+    def hash_block(self, block):
+        return hashlib.sha256(json.dumps(block, sort_keys=True).encode()).hexdigest()
+
+    # -------- Banking Features --------
+    def create_account(self, name):
+        if name in self.balances:
+            return False, "Account already exists."
+        self.balances[name] = 0
+        return True, f"Account '{name}' created."
+
+    def deposit(self, account, amount):
+        if account not in self.balances:
+            return False, "Account does not exist."
+        if amount <= 0:
+            return False, "Amount must be positive."
+        self.pending_txns.append({"from": "BANK", "to": account, "amount": amount})
+        return True, f"Deposit of {amount} added to pending transactions."
+
+    def transfer(self, sender, receiver, amount):
+        if sender not in self.balances or receiver not in self.balances:
+            return False, "Sender or receiver does not exist."
+        if amount <= 0:
+            return False, "Amount must be positive."
+        if self.balances[sender] < amount:
+            return False, "Insufficient funds."
+        self.pending_txns.append({"from": sender, "to": receiver, "amount": amount})
+        return True, f"Transfer of {amount} from {sender} to {receiver} pending."
+
+    def mine_block(self):
+        prev = self.get_last_block()
+        proof = self.proof_of_work(prev["proof"])
+        prev_hash = self.hash_block(prev)
+        return self.create_block(proof, prev_hash)
+
+# -------- CLI Demo --------
+if __name__ == "__main__":
+    bank = SimpleBankingBlockchain()
+
+    MENU = """
+========= BLOCKCHAIN BANK =========
+1) Create account
+2) Deposit money
+3) Transfer money
+4) Mine block
+5) Show balances
+6) Show blockchain
+0) Exit
+==================================
+"""
+
+    print("\n🏦 Welcome to Simple Blockchain Bank\n")
+
+    while True:
+        print(MENU)
+        choice = input("Choose an option: ").strip()
+
+        if choice == "1":
+            name = input("Enter account name: ")
+            ok, msg = bank.create_account(name)
+            print(("✅ " if ok else "❌ ") + msg)
+
+        elif choice == "2":
+            acct = input("Deposit to account: ")
+            amt = float(input("Amount: "))
+            ok, msg = bank.deposit(acct, amt)
+            print(("✅ " if ok else "❌ ") + msg)
+
+        elif choice == "3":
+            s = input("From account: ")
+            r = input("To account: ")
+            amt = float(input("Amount: "))
+            ok, msg = bank.transfer(s, r, amt)
+            print(("✅ " if ok else "❌ ") + msg)
+
+        elif choice == "4":
+            if not bank.pending_txns:
+                print("ℹ️ No transactions to mine.")
+            else:
+                print("⛏️ Mining block...")
+                block = bank.mine_block()
+                print("✅ Block added:", json.dumps(block, indent=2))
+
+        elif choice == "5":
+            print("📊 Account balances:")
+            for k, v in bank.balances.items():
+                print(f" - {k}: {v}")
+
+        elif choice == "6":
+            print("⛓️ Blockchain:")
+            print(json.dumps(bank.chain, indent=2))
+
+        elif choice == "0":
+            print("👋 Goodbye!")
+            break
+
+        else:
+            print("❌ Invalid option.")
